@@ -4,6 +4,11 @@ import socket
 import ssl
 import threading
 
+def getLocalIp():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    return s.getsockname()[0]
+
 def logPackets(data, toServer):
     if(toServer):
         print("[client] {}".format(str(data)))
@@ -12,13 +17,14 @@ def logPackets(data, toServer):
     return data
 
 class TcpProxy(threading.Thread):
-    def __init__(self, local_host, local_port, remote_host, remote_port, intercept_callback = logPackets):
+    def __init__(self, local_host, local_port, remote_host, remote_port, useLocalIp, intercept_callback = logPackets):
         threading.Thread.__init__(self)
         self.local_host = local_host
         self.local_port = local_port
         self.remote_host = remote_host
         self.remote_port = remote_port
         self.intercept_callback = intercept_callback
+        self.useLocalIp = useLocalIp
 
     def receive_from(self, client_socket, remote_socket):
         while True:
@@ -33,7 +39,11 @@ class TcpProxy(threading.Thread):
 
     def send_to(self, client_socket, remote_socket):
         while True:
-            data = client_socket.recv(4096)
+            try:
+                data = client_socket.recv(4096)
+            except:
+                break
+            #data = client_socket.recv(4096)
             if not data:
                 break
             # Edit the received data here
@@ -45,7 +55,8 @@ class TcpProxy(threading.Thread):
     def handle_client(self, client_socket):
         # Connect to the remote server
         remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_socket.bind(('192.168.18.6', 0))
+        if(self.useLocalIp):
+            remote_socket.bind((getLocalIp(), 0))
         remote_socket.connect((self.remote_host, self.remote_port))
 
         # Create separate threads for sending and receiving data
@@ -71,7 +82,7 @@ class TcpProxy(threading.Thread):
             client_handler.start()
 
 class TcpSSLProxy(threading.Thread):
-    def __init__(self, local_host, local_port, remote_host, remote_port, ssl_certfile=None, ssl_keyfile=None, intercept_callback = logPackets):
+    def __init__(self, local_host, local_port, remote_host, remote_port, useLocalIp, ssl_certfile=None, ssl_keyfile=None, intercept_callback = logPackets):
         threading.Thread.__init__(self)
         self.local_host = local_host
         self.local_port = local_port
@@ -80,15 +91,14 @@ class TcpSSLProxy(threading.Thread):
         self.ssl_certfile = ssl_certfile
         self.ssl_keyfile = ssl_keyfile
         self.intercept_callback = intercept_callback
+        self.useLocalIp = useLocalIp
 
     def receive_from(self, client_socket, remote_socket):
         while True:
             try:
                 data = remote_socket.recv(4096)
             except:
-                remote_socket.close()
-                client_socket.close()
-                return
+                break
             if not data:
                 break
             # Edit the received data here
@@ -111,7 +121,8 @@ class TcpSSLProxy(threading.Thread):
     def handle_client(self, client_socket):
         # Connect to the remote server
         remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_socket.bind(('192.168.18.6', 0))
+        if(self.useLocalIp):
+            remote_socket.bind((getLocalIp(), 0))
         remote_socket.connect((self.remote_host, self.remote_port))
 
         # Create an SSL context for the remote socket
@@ -153,7 +164,7 @@ import socket
 import threading
 
 class UdpProxy(threading.Thread):
-    def __init__(self, local_host, local_port , remote_host, remote_port, intercept_callback = logPackets):
+    def __init__(self, local_host, local_port , remote_host, remote_port, useLocalIp, intercept_callback = logPackets):
         threading.Thread.__init__(self)
         self.local_host = local_host
         self.remote_host = remote_host
@@ -161,6 +172,7 @@ class UdpProxy(threading.Thread):
         self.remote_port = remote_port
         self.intercept_callback = intercept_callback
         self.client_address = None
+        self.useLocalIp = useLocalIp
 
     def receive_from(self):
         while True:
@@ -178,7 +190,9 @@ class UdpProxy(threading.Thread):
         # Create sockets for the client and server
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.server_socket.bind(('192.168.18.6', 0))
+        #self.server_socket.bind(('192.168.18.6', 0))
+        if(self.useLocalIp):
+            self.server_socket.bind((getLocalIp(), 0))
 
         # Bind the client socket to the local host and port
         self.client_socket.bind((self.local_host, self.local_port))
